@@ -1,90 +1,100 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ancient Warrior - Mobile Ready</title>
-    <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <title>Ancient Warrior 3D - Pro Version</title>
+    <script src="https://preview.babylonjs.com/babylon.js"></script>
+    <script src="https://preview.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://preview.babylonjs.com/gui/babylon.gui.min.js"></script>
     <style>
-        body, html { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #000; }
+        body, html { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #1a1a1a; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; }
+        #status { position: absolute; bottom: 20px; width: 100%; text-align: center; color: white; font-family: sans-serif; pointer-events: none; }
     </style>
 </head>
 <body>
+    <div id="status">جاري استدعاء المحارب...</div>
     <canvas id="renderCanvas"></canvas>
+
     <script>
         const canvas = document.getElementById("renderCanvas");
         const engine = new BABYLON.Engine(canvas, true);
+        const status = document.getElementById("status");
 
-        const createScene = function () {
+        const createScene = async function () {
             const scene = new BABYLON.Scene(engine);
-            scene.clearColor = new BABYLON.Color3(0.5, 0.8, 1); // سماء زرقاء
-
-            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
             
+            // بيئة إضاءة احترافية
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.8;
+
+            // سماء (Skybox)
+            const skybox = BABYLON.MeshBuilder.CreateBox("skyBox", {size:1000.0}, scene);
+            const skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
+            skyboxMaterial.backFaceCulling = false;
+            skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("https://assets.babylonjs.com/textures/skybox", scene);
+            skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+            skyboxMaterial.diffuseColor = new BABYLON.Color3(0, 0, 0);
+            skyboxMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+            skybox.material = skyboxMaterial;
+
             // الكاميرا
-            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 15, BABYLON.Vector3.Zero(), scene);
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 10, BABYLON.Vector3.Zero(), scene);
             camera.attachControl(canvas, true);
 
-            // أرضية مرسومة بالكود
+            // الأرضية بتكستشر واقعي
             const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100}, scene);
             const groundMat = new BABYLON.StandardMaterial("gMat", scene);
-            groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.5, 0.2);
+            groundMat.diffuseTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/grass.jpg", scene);
             ground.material = groundMat;
 
-            // بناء "محارب" بسيط من المكعبات (عشان يشتغل 100%)
-            const warrior = BABYLON.MeshBuilder.CreateBox("body", {height: 2, width: 1, depth: 0.5}, scene);
-            warrior.position.y = 1;
-            const warriorMat = new BABYLON.StandardMaterial("wMat", scene);
-            warriorMat.diffuseColor = new BABYLON.Color3(0.7, 0.7, 0.7); // لون درع فضي
-            warrior.material = warriorMat;
+            // --- تحميل المحارب بالسيف ---
+            try {
+                // سنستخدم موديل الـ Dummy الاحترافي الذي يدعم الأنيميشن
+                const warriorResult = await BABYLON.SceneLoader.ImportMeshAsync("", "https://models.babylonjs.com/", "vampire.glb", scene);
+                const warrior = warriorResult.meshes[0];
+                warrior.scaling.setAll(2); // ضبط الحجم
+                camera.lockedTarget = warrior;
+                status.innerText = "المحارب جاهز! استخدم WASD للحركة";
 
-            // إضافة "سيف" للمحارب
-            const sword = BABYLON.MeshBuilder.CreateBox("sword", {height: 2, width: 0.1, depth: 0.2}, scene);
-            sword.parent = warrior;
-            sword.position.set(0.6, 0.5, 0.5);
-            sword.rotation.x = Math.PI / 3;
+                // تحميل غابة أشجار واقعية
+                const treeResult = await BABYLON.SceneLoader.ImportMeshAsync("", "https://assets.babylonjs.com/meshes/", "Tree.glb", scene);
+                const treeBase = treeResult.meshes[0];
+                treeBase.isVisible = false;
+                
+                for(let i=0; i<30; i++){
+                    const t = treeBase.clone("tree"+i);
+                    t.position.set(Math.random()*80-40, 0, Math.random()*80-40);
+                }
 
-            camera.lockedTarget = warrior;
+                // حركة المحارب
+                const inputMap = {};
+                window.addEventListener("keydown", (e) => inputMap[e.key.toLowerCase()] = true);
+                window.addEventListener("keyup", (e) => inputMap[e.key.toLowerCase()] = false);
 
-            // إضافة "أشجار" (أسطوانة + كرة) بالكود
-            for (let i = 0; i < 20; i++) {
-                let trunk = BABYLON.MeshBuilder.CreateCylinder("t", {height: 2, diameter: 0.5}, scene);
-                let leaves = BABYLON.MeshBuilder.CreateSphere("l", {diameter: 3}, scene);
-                leaves.parent = trunk;
-                leaves.position.y = 2;
-                trunk.position.set(Math.random()*80-40, 1, Math.random()*80-40);
+                scene.onBeforeRenderObservable.add(() => {
+                    let move = 0;
+                    if (inputMap["w"]) move = 0.1;
+                    if (inputMap["s"]) move = -0.1;
+                    if (inputMap["a"]) warrior.rotation.y -= 0.05;
+                    if (inputMap["d"]) warrior.rotation.y += 0.05;
+                    
+                    if(move !== 0) {
+                        warrior.moveWithCollisions(warrior.forward.scale(move));
+                    }
+                });
+
+            } catch (e) {
+                console.error(e);
+                status.innerText = "فشل تحميل المجسمات. تأكد من أن الاستضافة تسمح بروابط خارجية.";
             }
-
-            // --- التحكم للموبايل (GUI) ---
-            const adt = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-            const joystick = new BABYLON.GUI.Ellipse();
-            joystick.width = "100px"; joystick.height = "100px";
-            joystick.color = "white"; joystick.thickness = 4;
-            joystick.background = "rgba(0,0,0,0.3)";
-            joystick.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-            joystick.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-            joystick.left = "50px"; joystick.bottom = "50px";
-            adt.addControl(joystick);
-
-            // منطق الحركة
-            let moveVector = new BABYLON.Vector3(0, 0, 0);
-            const inputMap = {};
-            window.addEventListener("keydown", (e) => inputMap[e.key.toLowerCase()] = true);
-            window.addEventListener("keyup", (e) => inputMap[e.key.toLowerCase()] = false);
-
-            scene.onBeforeRenderObservable.add(() => {
-                let speed = 0.2;
-                if (inputMap["w"]) warrior.moveWithCollisions(warrior.forward.scale(speed));
-                if (inputMap["s"]) warrior.moveWithCollisions(warrior.forward.scale(-speed));
-                if (inputMap["a"]) warrior.rotation.y -= 0.05;
-                if (inputMap["d"]) warrior.rotation.y += 0.05;
-            });
 
             return scene;
         };
 
-        const scene = createScene();
-        engine.runRenderLoop(() => scene.render());
+        createScene().then(scene => {
+            engine.runRenderLoop(() => scene.render());
+        });
+
         window.addEventListener("resize", () => engine.resize());
     </script>
 </body>
