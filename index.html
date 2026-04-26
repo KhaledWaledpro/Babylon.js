@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Babylon.js Quick Start</title>
+    <title>Ancient Warrior Adventure</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
     <style>
         body, html { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; }
@@ -17,52 +18,71 @@
 
         const createScene = async function () {
             const scene = new BABYLON.Scene(engine);
-            
-            // خلفية زرقاء عشان تتأكد إن المشهد شغال
-            scene.clearColor = new BABYLON.Color3(0.5, 0.8, 1);
+            scene.clearColor = new BABYLON.Color3(0.4, 0.6, 0.9); // سماء زرقاء
 
-            // إضاءة قوية
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
             light.intensity = 0.8;
 
-            // الكاميرا
             const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 15, BABYLON.Vector3.Zero(), scene);
             camera.attachControl(canvas, true);
 
-            // أرضية كبيرة وواضحة
-            const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100}, scene);
+            // أرضية كبيرة بعشب
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 150, height: 150}, scene);
             const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
-            groundMat.diffuseColor = new BABYLON.Color3(0.1, 0.4, 0.1); 
+            groundMat.diffuseTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/grass.jpg", scene);
             ground.material = groundMat;
 
-            // إنشاء لاعب مؤقت (صندوق) في حالة الموديل مجاش
+            // 1. اللاعب (صندوق مؤقت لحد ما المحارب يحمل)
             let player = BABYLON.MeshBuilder.CreateBox("player", {size: 2}, scene);
-            player.position.y = 1; // يرفعه فوق الأرض
-            const playerMat = new BABYLON.StandardMaterial("playerMat", scene);
-            playerMat.diffuseColor = new BABYLON.Color3(1, 0, 0); // لون أحمر
-            player.material = playerMat;
-
+            player.position.y = 1;
+            player.isVisible = true; // خليه ظاهر في البداية عشان متبقاش الشاشة فاضية
             camera.lockedTarget = player;
 
-            // محاولة تحميل الموديل الجاهز (لو فشل هيكمل بالصندوق)
-            BABYLON.SceneLoader.ImportMeshAsync("", "https://assets.babylonjs.com/meshes/", "HVGirl.glb", scene).then((result) => {
+            // 2. تحميل المحارب (Ancient Knight)
+            BABYLON.SceneLoader.ImportMeshAsync("", "https://models.babylonjs.com/", "vampire.glb", scene).then((result) => {
                 const mesh = result.meshes[0];
-                mesh.scaling.setAll(0.1);
-                mesh.parent = player; // نربط الموديل بالصندوق
-                player.isVisible = false; // نخفي الصندوق ونظهر البنت
-            }).catch(err => console.log("الموديل لسه بيحمل أو فيه مشكلة في النت"));
+                mesh.parent = player; 
+                mesh.scaling.setAll(2);
+                mesh.position.y = -1; // تظبيط مكانه جوه الصندوق
+                player.isVisible = false; // نخفي الصندوق لما المحارب يظهر
+            });
 
-            // نظام الحركة
+            // 3. إضافة غابة أشجار (Assets جاهزة)
+            BABYLON.SceneLoader.ImportMeshAsync("", "https://assets.babylonjs.com/meshes/", "Tree.glb", scene).then((result) => {
+                const baseTree = result.meshes[0];
+                baseTree.isVisible = false;
+                for(let i=0; i<40; i++) {
+                    const t = baseTree.clone("tree"+i);
+                    t.position.set(Math.random()*120 - 60, 0, Math.random()*120 - 60);
+                }
+            });
+
+            // 4. دعم الموبايل (Virtual Joystick)
+            const adt = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+            const leftJoystick = new BABYLON.VirtualJoystick(true); 
+            BABYLON.VirtualJoystick.Canvas.style.zIndex = "100";
+
+            // 5. نظام الحركة المزدوج
             const inputMap = {};
-            window.addEventListener("keydown", (evt) => { inputMap[evt.key.toLowerCase()] = true; });
-            window.addEventListener("keyup", (evt) => { inputMap[evt.key.toLowerCase()] = false; });
+            window.addEventListener("keydown", (e) => inputMap[e.key.toLowerCase()] = true);
+            window.addEventListener("keyup", (e) => inputMap[e.key.toLowerCase()] = false);
 
             scene.onBeforeRenderObservable.add(() => {
-                const speed = 0.2;
-                if (inputMap["w"]) player.moveWithCollisions(player.forward.scaleInPlace(speed));
-                if (inputMap["s"]) player.moveWithCollisions(player.forward.scaleInPlace(-speed));
-                if (inputMap["a"]) player.rotate(BABYLON.Vector3.Up(), -0.05);
-                if (inputMap["d"]) player.rotate(BABYLON.Vector3.Up(), 0.05);
+                let speed = 0.2;
+                let moved = false;
+
+                // حركة الكيبورد
+                if (inputMap["w"]) { player.moveWithCollisions(player.forward.scaleInPlace(speed)); moved = true; }
+                if (inputMap["s"]) { player.moveWithCollisions(player.forward.scaleInPlace(-speed)); moved = true; }
+                if (inputMap["a"]) { player.rotate(BABYLON.Vector3.Up(), -0.05); moved = true; }
+                if (inputMap["d"]) { player.rotate(BABYLON.Vector3.Up(), 0.05); moved = true; }
+
+                // حركة الجويستيك (للموبايل)
+                if (leftJoystick.pressed) {
+                    const moveVec = new BABYLON.Vector3(leftJoystick.deltaPosition.x * speed, 0, leftJoystick.deltaPosition.y * speed);
+                    player.moveWithCollisions(moveVec);
+                    moved = true;
+                }
             });
 
             return scene;
@@ -71,7 +91,6 @@
         createScene().then(scene => {
             engine.runRenderLoop(() => { scene.render(); });
         });
-
         window.addEventListener("resize", () => { engine.resize(); });
     </script>
 </body>
